@@ -29,13 +29,15 @@ class AngelOneAPI:
         self.client_id = client_id
         self.password = password
         self.totp = totp
-        self.base_url = "https://apiconnect.angelbroking.com"
+        self.base_url = "https://apiconnect.angelone.in"
         self.access_token = None
+        self.refresh_token = None
+        self.feed_token = None
         
-        # Symbol to token mapping for common NSE stocks
+        # Symbol to token mapping for common NSE stocks (from Angel One SmartAPI)
         self.symbol_tokens = {
             'RELIANCE': '2881',
-            'TCS': '2951',
+            'TCS': '2951', 
             'INFY': '4081',
             'HDFCBANK': '1333',
             'ICICIBANK': '4963',
@@ -51,8 +53,9 @@ class AngelOneAPI:
         }
         
     def get_access_token(self):
-        """Get access token for Angel One API"""
+        """Get access token for Angel One SmartAPI"""
         try:
+            # Use the NEW SmartAPI authentication endpoint
             url = f"{self.base_url}/rest/auth/angelbroking/user/v1/loginByPassword"
             headers = {
                 'Content-Type': 'application/json',
@@ -71,31 +74,35 @@ class AngelOneAPI:
                 "totp": self.totp
             }
             
+            logger.info(f"Authenticating with Angel One SmartAPI...")
             response = requests.post(url, headers=headers, json=payload)
+            
             logger.info(f"Auth response status: {response.status_code}")
             logger.info(f"Auth response: {response.text}")
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get('status'):
+                if data.get('status') and data.get('data'):
                     self.access_token = data['data']['jwtToken']
-                    logger.info("Access token obtained successfully")
+                    self.refresh_token = data['data'].get('refreshToken')
+                    self.feed_token = data['data'].get('feedToken')
+                    logger.info("SmartAPI authentication successful")
                     return True
                 else:
-                    logger.error(f"Auth failed: {data}")
+                    logger.error(f"SmartAPI auth failed: {data}")
             else:
-                logger.error(f"Auth request failed with status {response.status_code}: {response.text}")
+                logger.error(f"SmartAPI auth request failed with status {response.status_code}: {response.text}")
             return False
         except Exception as e:
-            logger.error(f"Error getting access token: {e}")
+            logger.error(f"Error getting SmartAPI access token: {e}")
             return False
     
     def get_historical_data(self, symbol, interval="ONE_MINUTE", from_date=None, to_date=None):
-        """Get historical data for a symbol"""
+        """Get historical data using Angel One SmartAPI"""
         try:
             if not self.access_token:
                 if not self.get_access_token():
-                    logger.error("Failed to get access token")
+                    logger.error("Failed to get SmartAPI access token")
                     return None
             
             # Get token for the symbol
@@ -104,6 +111,7 @@ class AngelOneAPI:
                 logger.error(f"No token found for symbol: {symbol}")
                 return None
             
+            # Use the NEW SmartAPI historical data endpoint
             url = f"{self.base_url}/rest/secure/angelbroking/historical/v1/getCandleData"
             headers = {
                 'Authorization': f'Bearer {self.access_token}',
@@ -123,6 +131,7 @@ class AngelOneAPI:
             if not to_date:
                 to_date = datetime.now().strftime('%Y-%m-%d')
             
+            # SmartAPI historical data payload format
             payload = {
                 "mode": "FULL",
                 "exchangeTokens": {
@@ -133,11 +142,11 @@ class AngelOneAPI:
                 "toDate": to_date
             }
             
-            logger.info(f"Requesting historical data for {symbol} (token: {token}) from {from_date} to {to_date}")
+            logger.info(f"Requesting SmartAPI historical data for {symbol} (token: {token}) from {from_date} to {to_date}")
             response = requests.post(url, headers=headers, json=payload)
             
-            logger.info(f"Historical data response status: {response.status_code}")
-            logger.info(f"Historical data response: {response.text}")
+            logger.info(f"SmartAPI historical data response status: {response.status_code}")
+            logger.info(f"SmartAPI historical data response: {response.text}")
             
             if response.status_code == 200:
                 data = response.json()
@@ -146,14 +155,14 @@ class AngelOneAPI:
                 else:
                     logger.error(f"No data returned for {symbol}: {data}")
             else:
-                logger.error(f"Historical data request failed with status {response.status_code}: {response.text}")
+                logger.error(f"SmartAPI historical data request failed with status {response.status_code}: {response.text}")
             return None
         except Exception as e:
-            logger.error(f"Error getting historical data for {symbol}: {e}")
+            logger.error(f"Error getting SmartAPI historical data for {symbol}: {e}")
             return None
     
     def _process_historical_data(self, data):
-        """Process historical data into DataFrame"""
+        """Process SmartAPI historical data into DataFrame"""
         try:
             df_data = []
             for exchange, tokens in data.items():
@@ -170,10 +179,10 @@ class AngelOneAPI:
             
             df = pd.DataFrame(df_data)
             df = df.sort_values('timestamp').reset_index(drop=True)
-            logger.info(f"Processed {len(df)} historical data points")
+            logger.info(f"Processed {len(df)} SmartAPI historical data points")
             return df
         except Exception as e:
-            logger.error(f"Error processing historical data: {e}")
+            logger.error(f"Error processing SmartAPI historical data: {e}")
             return None
 
 class BacktestEngine:
