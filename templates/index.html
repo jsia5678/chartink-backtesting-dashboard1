@@ -168,14 +168,15 @@
                                 <input type="password" class="form-control" id="password" placeholder="Your MPIN (4-digit)">
                             </div>
                             <div class="col-md-3">
-                                <label for="totp" class="form-label">TOTP</label>
-                                <input type="text" class="form-control" id="totp" placeholder="6-digit TOTP">
+                                <label for="totp" class="form-label">TOTP Secret Key</label>
+                                <input type="text" class="form-control" id="totp" placeholder="Your TOTP secret key (e.g., JBSWY3DPEHPK3PXP)">
                             </div>
                         </div>
                         <div class="mt-3">
                             <small class="text-muted">
                                 <i class="fas fa-info-circle me-1"></i>
                                 Get your API credentials from <a href="https://smartapi.angelbroking.com/" target="_blank">Angel One SmartAPI</a><br>
+                                <strong>TOTP Secret Key:</strong> Enter your TOTP secret key (not the 6-digit code). Find it in your Angel One account settings under 2FA/TOTP setup.<br>
                                 <strong>Note:</strong> Use your 4-digit MPIN (not password) for Angel One login
                             </small>
                         </div>

@@ -55,6 +55,17 @@ class AngelOneAPI:
     def get_access_token(self):
         """Get access token for Angel One SmartAPI"""
         try:
+            # Import pyotp for TOTP generation
+            import pyotp
+            
+            # Generate TOTP from the secret key
+            try:
+                totp_code = pyotp.TOTP(self.totp).now()
+                logger.info(f"Generated TOTP code: {totp_code}")
+            except Exception as e:
+                logger.error(f"TOTP generation failed: {e}")
+                return False
+            
             # Use the NEW SmartAPI authentication endpoint
             url = f"{self.base_url}/rest/auth/angelbroking/user/v1/loginByPassword"
             headers = {
@@ -71,7 +82,7 @@ class AngelOneAPI:
             payload = {
                 "clientcode": self.client_id,
                 "password": self.password,
-                "totp": self.totp
+                "totp": totp_code  # Use the generated TOTP code
             }
             
             logger.info(f"Authenticating with Angel One SmartAPI...")
@@ -113,7 +124,7 @@ class AngelOneAPI:
             token = self.symbol_tokens.get(symbol)
             if not token:
                 logger.error(f"Invalid symbol: {symbol}. Valid symbols are: {list(self.symbol_tokens.keys())}")
-                return None
+                    return None
             
             # Use the NEW SmartAPI historical data endpoint
             url = f"{self.base_url}/rest/secure/angelbroking/historical/v1/getCandleData"
@@ -175,8 +186,8 @@ class AngelOneAPI:
                         # Skip candles with empty or invalid data
                         if len(candle) < 6 or not all(candle[:6]):
                             logger.warning(f"Skipping invalid candle data: {candle}")
-                            continue
-                        
+                    continue
+                
                         try:
                             # Safely convert to float, handling empty strings
                             open_price = float(candle[1]) if candle[1] and candle[1] != '' else 0.0
@@ -188,8 +199,8 @@ class AngelOneAPI:
                             # Skip if all prices are zero (invalid data)
                             if open_price == 0 and high_price == 0 and low_price == 0 and close_price == 0:
                                 logger.warning(f"Skipping candle with zero prices: {candle}")
-                                continue
-                            
+                    continue
+                
                             df_data.append({
                                 'timestamp': datetime.fromtimestamp(int(candle[0]) / 1000),
                                 'open': open_price,
@@ -200,11 +211,11 @@ class AngelOneAPI:
                             })
                         except (ValueError, TypeError) as e:
                             logger.warning(f"Skipping invalid candle data: {candle}, error: {e}")
-                            continue
-            
+                continue
+        
             if not df_data:
                 logger.error("No valid historical data found")
-                return None
+            return None
             
             df = pd.DataFrame(df_data)
             df = df.sort_values('timestamp').reset_index(drop=True)
@@ -326,21 +337,21 @@ class BacktestEngine:
                     if low_price == 0 or high_price == 0 or close_price == 0:
                         continue
                     
-                    # Check if low hit stop loss
+                # Check if low hit stop loss
                     if low_price <= sl_price:
-                        return {
-                            'exit_datetime': row['timestamp'],
-                            'exit_price': sl_price,
-                            'exit_reason': 'Stop Loss'
-                        }
-                    
-                    # Check if high hit target
+                    return {
+                        'exit_datetime': row['timestamp'],
+                        'exit_price': sl_price,
+                        'exit_reason': 'Stop Loss'
+                    }
+                
+                # Check if high hit target
                     if high_price >= target_price:
-                        return {
-                            'exit_datetime': row['timestamp'],
-                            'exit_price': target_price,
-                            'exit_reason': 'Target'
-                        }
+                    return {
+                        'exit_datetime': row['timestamp'],
+                        'exit_price': target_price,
+                        'exit_reason': 'Target'
+                    }
                 except (ValueError, TypeError) as e:
                     logger.warning(f"Error processing row data: {e}, row: {row}")
                     continue
@@ -356,11 +367,11 @@ class BacktestEngine:
                     if exit_price == 0:
                         logger.warning(f"Invalid exit price for time exit: {exit_row['close']}")
                         return None
-                    return {
-                        'exit_datetime': exit_row['timestamp'],
+                return {
+                    'exit_datetime': exit_row['timestamp'],
                         'exit_price': exit_price,
-                        'exit_reason': f'Time Exit ({exit_days} days)'
-                    }
+                    'exit_reason': f'Time Exit ({exit_days} days)'
+                }
                 except (ValueError, TypeError) as e:
                     logger.error(f"Error processing time exit: {e}, exit_row: {exit_row}")
                     return None
