@@ -32,6 +32,24 @@ class AngelOneAPI:
         self.base_url = "https://apiconnect.angelbroking.com"
         self.access_token = None
         
+        # Symbol to token mapping for common NSE stocks
+        self.symbol_tokens = {
+            'RELIANCE': '2881',
+            'TCS': '2951',
+            'INFY': '4081',
+            'HDFCBANK': '1333',
+            'ICICIBANK': '4963',
+            'SBIN': '3045',
+            'WIPRO': '4081',
+            'LT': '11536',
+            'BAJFINANCE': '317',
+            'ASIANPAINT': '1660',
+            'ITC': '1660',
+            'ULTRACEMCO': '11536',
+            'AXISBANK': '5900',
+            'MARUTI': '10999'
+        }
+        
     def get_access_token(self):
         """Get access token for Angel One API"""
         try:
@@ -54,11 +72,19 @@ class AngelOneAPI:
             }
             
             response = requests.post(url, headers=headers, json=payload)
+            logger.info(f"Auth response status: {response.status_code}")
+            logger.info(f"Auth response: {response.text}")
+            
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status'):
                     self.access_token = data['data']['jwtToken']
+                    logger.info("Access token obtained successfully")
                     return True
+                else:
+                    logger.error(f"Auth failed: {data}")
+            else:
+                logger.error(f"Auth request failed with status {response.status_code}: {response.text}")
             return False
         except Exception as e:
             logger.error(f"Error getting access token: {e}")
@@ -69,7 +95,14 @@ class AngelOneAPI:
         try:
             if not self.access_token:
                 if not self.get_access_token():
+                    logger.error("Failed to get access token")
                     return None
+            
+            # Get token for the symbol
+            token = self.symbol_tokens.get(symbol)
+            if not token:
+                logger.error(f"No token found for symbol: {symbol}")
+                return None
             
             url = f"{self.base_url}/rest/secure/angelbroking/historical/v1/getCandleData"
             headers = {
@@ -93,18 +126,27 @@ class AngelOneAPI:
             payload = {
                 "mode": "FULL",
                 "exchangeTokens": {
-                    "NSE": [symbol]
+                    "NSE": [token]
                 },
                 "interval": interval,
                 "fromDate": from_date,
                 "toDate": to_date
             }
             
+            logger.info(f"Requesting historical data for {symbol} (token: {token}) from {from_date} to {to_date}")
             response = requests.post(url, headers=headers, json=payload)
+            
+            logger.info(f"Historical data response status: {response.status_code}")
+            logger.info(f"Historical data response: {response.text}")
+            
             if response.status_code == 200:
                 data = response.json()
                 if data.get('status') and data.get('data'):
                     return self._process_historical_data(data['data'])
+                else:
+                    logger.error(f"No data returned for {symbol}: {data}")
+            else:
+                logger.error(f"Historical data request failed with status {response.status_code}: {response.text}")
             return None
         except Exception as e:
             logger.error(f"Error getting historical data for {symbol}: {e}")
@@ -128,6 +170,7 @@ class AngelOneAPI:
             
             df = pd.DataFrame(df_data)
             df = df.sort_values('timestamp').reset_index(drop=True)
+            logger.info(f"Processed {len(df)} historical data points")
             return df
         except Exception as e:
             logger.error(f"Error processing historical data: {e}")
