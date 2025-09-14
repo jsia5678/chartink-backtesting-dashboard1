@@ -100,6 +100,10 @@ class AngelOneAPI:
     def get_historical_data(self, symbol, interval="ONE_MINUTE", from_date=None, to_date=None):
         """Get historical data using Angel One SmartAPI"""
         try:
+            # Add rate limiting - wait between API calls
+            import time
+            time.sleep(1)  # Wait 1 second between API calls
+            
             if not self.access_token:
                 if not self.get_access_token():
                     logger.error("Failed to get SmartAPI access token")
@@ -108,7 +112,7 @@ class AngelOneAPI:
             # Get token for the symbol
             token = self.symbol_tokens.get(symbol)
             if not token:
-                logger.error(f"No token found for symbol: {symbol}")
+                logger.error(f"Invalid symbol: {symbol}. Valid symbols are: {list(self.symbol_tokens.keys())}")
                 return None
             
             # Use the NEW SmartAPI historical data endpoint
@@ -168,14 +172,39 @@ class AngelOneAPI:
             for exchange, tokens in data.items():
                 for token, candles in tokens.items():
                     for candle in candles:
-                        df_data.append({
-                            'timestamp': datetime.fromtimestamp(int(candle[0]) / 1000),
-                            'open': float(candle[1]),
-                            'high': float(candle[2]),
-                            'low': float(candle[3]),
-                            'close': float(candle[4]),
-                            'volume': int(candle[5])
-                        })
+                        # Skip candles with empty or invalid data
+                        if len(candle) < 6 or not all(candle[:6]):
+                            logger.warning(f"Skipping invalid candle data: {candle}")
+                            continue
+                        
+                        try:
+                            # Safely convert to float, handling empty strings
+                            open_price = float(candle[1]) if candle[1] and candle[1] != '' else 0.0
+                            high_price = float(candle[2]) if candle[2] and candle[2] != '' else 0.0
+                            low_price = float(candle[3]) if candle[3] and candle[3] != '' else 0.0
+                            close_price = float(candle[4]) if candle[4] and candle[4] != '' else 0.0
+                            volume = int(candle[5]) if candle[5] and candle[5] != '' else 0
+                            
+                            # Skip if all prices are zero (invalid data)
+                            if open_price == 0 and high_price == 0 and low_price == 0 and close_price == 0:
+                                logger.warning(f"Skipping candle with zero prices: {candle}")
+                                continue
+                            
+                            df_data.append({
+                                'timestamp': datetime.fromtimestamp(int(candle[0]) / 1000),
+                                'open': open_price,
+                                'high': high_price,
+                                'low': low_price,
+                                'close': close_price,
+                                'volume': volume
+                            })
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Skipping invalid candle data: {candle}, error: {e}")
+                            continue
+            
+            if not df_data:
+                logger.error("No valid historical data found")
+                return None
             
             df = pd.DataFrame(df_data)
             df = df.sort_values('timestamp').reset_index(drop=True)
@@ -217,8 +246,12 @@ class BacktestEngine:
                     continue
                 
                 # Calculate stop loss and target prices
-                sl_price = entry_price * (1 - stop_loss_pct / 100)
-                target_price = entry_price * (1 + target_pct / 100)
+                try:
+                    sl_price = float(entry_price) * (1 - float(stop_loss_pct) / 100)
+                    target_price = float(entry_price) * (1 + float(target_pct) / 100)
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Error calculating prices for {symbol}: {e}, entry_price: {entry_price}")
+                    continue
                 
                 # Find exit conditions
                 exit_result = self._find_exit(hist_data, entry_datetime, entry_price, 
@@ -262,7 +295,12 @@ class BacktestEngine:
             nearby_data['time_diff'] = abs(nearby_data['timestamp'] - entry_datetime)
             closest_idx = nearby_data['time_diff'].idxmin()
             
-            return nearby_data.loc[closest_idx, 'close']
+            close_price = nearby_data.loc[closest_idx, 'close']
+            # Ensure we have a valid price
+            if pd.isna(close_price) or close_price == 0:
+                logger.warning(f"Invalid close price for {entry_datetime}: {close_price}")
+                return None
+            return float(close_price)
         except Exception as e:
             logger.error(f"Error getting entry price: {e}")
             return None
@@ -278,21 +316,34 @@ class BacktestEngine:
             
             # Check for stop loss or target hits
             for _, row in post_entry_data.iterrows():
-                # Check if low hit stop loss
-                if row['low'] <= sl_price:
-                    return {
-                        'exit_datetime': row['timestamp'],
-                        'exit_price': sl_price,
-                        'exit_reason': 'Stop Loss'
-                    }
-                
-                # Check if high hit target
-                if row['high'] >= target_price:
-                    return {
-                        'exit_datetime': row['timestamp'],
-                        'exit_price': target_price,
-                        'exit_reason': 'Target'
-                    }
+                try:
+                    # Safely convert prices to float
+                    low_price = float(row['low']) if not pd.isna(row['low']) else 0
+                    high_price = float(row['high']) if not pd.isna(row['high']) else 0
+                    close_price = float(row['close']) if not pd.isna(row['close']) else 0
+                    
+                    # Skip if prices are invalid
+                    if low_price == 0 or high_price == 0 or close_price == 0:
+                        continue
+                    
+                    # Check if low hit stop loss
+                    if low_price <= sl_price:
+                        return {
+                            'exit_datetime': row['timestamp'],
+                            'exit_price': sl_price,
+                            'exit_reason': 'Stop Loss'
+                        }
+                    
+                    # Check if high hit target
+                    if high_price >= target_price:
+                        return {
+                            'exit_datetime': row['timestamp'],
+                            'exit_price': target_price,
+                            'exit_reason': 'Target'
+                        }
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error processing row data: {e}, row: {row}")
+                    continue
             
             # If neither hit, exit after n days
             exit_date = entry_datetime + timedelta(days=exit_days)
@@ -300,11 +351,19 @@ class BacktestEngine:
             
             if not exit_data.empty:
                 exit_row = exit_data.iloc[0]
-                return {
-                    'exit_datetime': exit_row['timestamp'],
-                    'exit_price': exit_row['close'],
-                    'exit_reason': f'Time Exit ({exit_days} days)'
-                }
+                try:
+                    exit_price = float(exit_row['close']) if not pd.isna(exit_row['close']) else 0
+                    if exit_price == 0:
+                        logger.warning(f"Invalid exit price for time exit: {exit_row['close']}")
+                        return None
+                    return {
+                        'exit_datetime': exit_row['timestamp'],
+                        'exit_price': exit_price,
+                        'exit_reason': f'Time Exit ({exit_days} days)'
+                    }
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Error processing time exit: {e}, exit_row: {exit_row}")
+                    return None
             
             return None
         except Exception as e:
@@ -490,7 +549,7 @@ def run_backtest():
         if results_df.empty:
             logger.error("No trades could be processed - results DataFrame is empty")
             return jsonify({
-                'error': 'No trades could be processed. This could be due to:\n1. Invalid symbols in your CSV\n2. API authentication issues\n3. No historical data available for the symbols\n4. Date format issues\n\nPlease check Railway logs for detailed error messages.'
+                'error': 'No trades could be processed. Common issues:\n\n1. INVALID TOTP: Get a fresh 6-digit code from your authenticator app\n2. INVALID SYMBOLS: Use valid NSE symbols like RELIANCE, TCS, INFY, HDFCBANK\n3. RATE LIMITING: Wait a few minutes before trying again\n4. API CREDENTIALS: Check your API Key, Client ID, and MPIN\n\nValid symbols: RELIANCE, TCS, INFY, HDFCBANK, ICICIBANK, SBIN, WIPRO, LT, BAJFINANCE, ASIANPAINT, ITC, ULTRACEMCO, AXISBANK, MARUTI'
             }), 400
         
         # Calculate metrics
