@@ -370,11 +370,45 @@ def upload_file():
             # Parse CSV
             df = pd.read_csv(filepath)
             
-            # Expected columns: entry_datetime, symbol, market_cap, sector
-            if len(df.columns) < 4:
-                return jsonify({'error': 'CSV must have at least 4 columns: entry_datetime, symbol, market_cap, sector'}), 400
+            # Check if we have enough columns
+            if len(df.columns) < 2:
+                return jsonify({'error': 'CSV must have at least 2 columns: date/time and symbol'}), 400
             
-            df.columns = ['entry_datetime', 'symbol', 'market_cap', 'sector']
+            # Flexible column mapping - handle different CSV formats
+            column_mapping = {}
+            for i, col in enumerate(df.columns):
+                col_lower = str(col).lower().strip()
+                if any(keyword in col_lower for keyword in ['date', 'time', 'datetime', 'entry']):
+                    column_mapping[col] = 'entry_datetime'
+                elif any(keyword in col_lower for keyword in ['symbol', 'stock', 'scrip', 'ticker']):
+                    column_mapping[col] = 'symbol'
+                elif any(keyword in col_lower for keyword in ['market', 'cap', 'mcap']):
+                    column_mapping[col] = 'market_cap'
+                elif any(keyword in col_lower for keyword in ['sector', 'industry']):
+                    column_mapping[col] = 'sector'
+            
+            # Rename columns based on mapping
+            df = df.rename(columns=column_mapping)
+            
+            # If we don't have required columns, try to map by position
+            if 'entry_datetime' not in df.columns:
+                df.columns.values[0] = 'entry_datetime'
+            if 'symbol' not in df.columns:
+                df.columns.values[1] = 'symbol'
+            if 'market_cap' not in df.columns and len(df.columns) > 2:
+                df.columns.values[2] = 'market_cap'
+            if 'sector' not in df.columns and len(df.columns) > 3:
+                df.columns.values[3] = 'sector'
+            
+            # Ensure we have at least entry_datetime and symbol
+            if 'entry_datetime' not in df.columns or 'symbol' not in df.columns:
+                return jsonify({'error': 'CSV must have date/time and symbol columns'}), 400
+            
+            # Fill missing columns with defaults
+            if 'market_cap' not in df.columns:
+                df['market_cap'] = 'Unknown'
+            if 'sector' not in df.columns:
+                df['sector'] = 'Unknown'
             
             # Flexible date parsing - handle multiple formats
             try:
@@ -403,11 +437,17 @@ def upload_file():
             # Store in session or temporary file
             df.to_csv(filepath, index=False)
             
+            # Log the processed data for debugging
+            logger.info(f"Processed CSV with {len(df)} rows")
+            logger.info(f"Columns: {list(df.columns)}")
+            logger.info(f"Sample data: {df.head().to_dict('records')}")
+            
             return jsonify({
                 'success': True,
                 'filename': filename,
                 'trades_count': len(df),
-                'preview': df.head().to_dict('records')
+                'preview': df.head().to_dict('records'),
+                'columns': list(df.columns)
             })
         
         return jsonify({'error': 'Invalid file format. Please upload a CSV file.'}), 400
@@ -448,7 +488,10 @@ def run_backtest():
         results_df = backtest_engine.run_backtest(trades_df, stop_loss, target, exit_days)
         
         if results_df.empty:
-            return jsonify({'error': 'No trades could be processed. Check your data and API credentials.'}), 400
+            logger.error("No trades could be processed - results DataFrame is empty")
+            return jsonify({
+                'error': 'No trades could be processed. This could be due to:\n1. Invalid symbols in your CSV\n2. API authentication issues\n3. No historical data available for the symbols\n4. Date format issues\n\nPlease check Railway logs for detailed error messages.'
+            }), 400
         
         # Calculate metrics
         metrics = calculate_metrics(results_df)
