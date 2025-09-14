@@ -1,16 +1,16 @@
 entry_datetime,symbol,market_cap,sector
-06-08-2025 10:15 am,YATHARTH,Midcap,Pharmaceuticals
-06-08-2025 10:15 am,KAMATHOTEL,Smallcap,Services
-06-08-2025 11:15 am,YATHARTH,Midcap,Pharmaceuticals
-06-08-2025 12:15 pm,YATHARTH,Midcap,Pharmaceuticals
-06-08-2025 1:15 pm,YATHARTH,Midcap,Pharmaceuticals
-06-08-2025 2:15 pm,YATHARTH,Midcap,Pharmaceuticals
-06-08-2025 2:15 pm,KAMATHOTEL,Smallcap,Services
-06-08-2025 3:15 pm,YATHARTH,Midcap,Pharmaceuticals
-08-08-2025 9:15 am,SIRCA,Smallcap,Industrials
-08-08-2025 10:15 am,SIRCA,Smallcap,Industrials
-08-08-2025 11:15 am,SIRCA,Smallcap,Industrials
-08-08-2025 12:15 pm,SIRCA,Smallcap,Industrials
-08-08-2025 1:15 pm,SIRCA,Smallcap,Industrials
-08-08-2025 2:15 pm,SIRCA,Smallcap,Industrials
-11-08-2025 9:15 am,YATHARTH,Midcap,Pharmaceuticals
+06-08-2025 10:15 AM,RELIANCE,Largecap,Oil & Gas
+06-08-2025 10:15 AM,TCS,Largecap,IT
+06-08-2025 11:15 AM,INFY,Largecap,IT
+06-08-2025 12:15 PM,HDFCBANK,Largecap,Banking
+06-08-2025 1:15 PM,ICICIBANK,Largecap,Banking
+06-08-2025 2:15 PM,SBIN,Largecap,Banking
+06-08-2025 2:15 PM,WIPRO,Largecap,IT
+06-08-2025 3:15 PM,LT,Largecap,Engineering
+08-08-2025 9:15 AM,BAJFINANCE,Midcap,Financial Services
+08-08-2025 10:15 AM,ASIANPAINT,Largecap,Paints
+08-08-2025 11:15 AM,ITC,Largecap,FMCG
+08-08-2025 12:15 PM,ULTRACEMCO,Largecap,Cement
+08-08-2025 1:15 PM,AXISBANK,Largecap,Banking
+08-08-2025 2:15 PM,MARUTI,Largecap,Automobile
+11-08-2025 9:15 AM,RELIANCE,Largecap,Oil & Gas
