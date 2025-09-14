@@ -323,7 +323,30 @@ def upload_file():
                 return jsonify({'error': 'CSV must have at least 4 columns: entry_datetime, symbol, market_cap, sector'}), 400
             
             df.columns = ['entry_datetime', 'symbol', 'market_cap', 'sector']
-            df['entry_datetime'] = pd.to_datetime(df['entry_datetime'])
+            
+            # Flexible date parsing - handle multiple formats
+            try:
+                # Try different date formats
+                df['entry_datetime'] = pd.to_datetime(df['entry_datetime'], format='%m-%d-%Y %I:%M %p', errors='coerce')
+                if df['entry_datetime'].isna().any():
+                    # Try alternative format
+                    df['entry_datetime'] = pd.to_datetime(df['entry_datetime'], format='%d-%m-%Y %I:%M %p', errors='coerce')
+                if df['entry_datetime'].isna().any():
+                    # Try with mixed format
+                    df['entry_datetime'] = pd.to_datetime(df['entry_datetime'], format='mixed', dayfirst=True, errors='coerce')
+                if df['entry_datetime'].isna().any():
+                    # Try ISO format
+                    df['entry_datetime'] = pd.to_datetime(df['entry_datetime'], format='ISO8601', errors='coerce')
+                
+                # Check if any dates are still invalid
+                if df['entry_datetime'].isna().any():
+                    invalid_rows = df[df['entry_datetime'].isna()]
+                    return jsonify({
+                        'error': f'Invalid date format found in rows: {invalid_rows.index.tolist()}. Please use format: MM-DD-YYYY HH:MM AM/PM or DD-MM-YYYY HH:MM AM/PM'
+                    }), 400
+                    
+            except Exception as e:
+                return jsonify({'error': f'Date parsing error: {str(e)}. Please check your date format.'}), 400
             
             # Store in session or temporary file
             df.to_csv(filepath, index=False)
